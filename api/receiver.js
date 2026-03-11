@@ -7,28 +7,26 @@ module.exports = async (req, res) => {
 
   const body = req.body;
 
-  if (!body || !body.From) {
+  if (!body || !body.From || !body.Body) {
     return res.status(200).send('OK');
   }
 
-  // Only process inbound messages
-  if (!body.Body) {
-    return res.status(200).send('OK');
-  }
+  // Always return 200 to Twilio immediately — don't make Twilio wait
+  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
 
-  try {
-    // 1. Forward to Dynamics CS
-    await fetch(
-      'https://m-6be3abd6-b0bf-f011-89f5-000d3ad8817c.eu.omnichannelengagementhub.com/whatsapp-twilio/incoming?orgId=6be3abd6-b0bf-f011-89f5-000d3ad8817c',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: querystring.stringify(body)
-      }
-    );
+  // Run both forwards independently so one can't block the other
+  const forwardToDynamics = fetch(
+    'https://m-6be3abd6-b0bf-f011-89f5-000d3ad8817c.eu.omnichannelengagementhub.com/whatsapp-twilio/incoming?orgId=6be3abd6-b0bf-f011-89f5-000d3ad8817c',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: querystring.stringify(body)
+    }
+  ).catch(err => console.error('Dynamics error:', err));
 
-    // 2. Notify Power Automate
-    await fetch(process.env.POWER_AUTOMATE_URL, {
+  const notifyPowerAutomate = fetch(
+    process.env.POWER_AUTOMATE_URL,
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -37,12 +35,9 @@ module.exports = async (req, res) => {
         ProfileName: body.ProfileName || 'Unknown',
         MessageSid: body.MessageSid || ''
       })
-    });
+    }
+  ).catch(err => console.error('Power Automate error:', err));
 
-  } catch (err) {
-    console.error('Error:', err);
-  }
-
-  // Always return 200 to Twilio immediately
-  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  // Run both at the same time
+  await Promise.all([forwardToDynamics, notifyPowerAutomate]);
 };
