@@ -10,11 +10,9 @@ module.exports = async (req, res) => {
   const body = req.body;
 
   if (!body || !body.From || !body.Body) {
+    console.log('3. Missing fields - stopping');
     return res.status(200).send('OK');
   }
-
-  // Respond to Twilio immediately
-  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
 
   // Forward to Dynamics WITH original Twilio headers
   console.log('4. Forwarding to Dynamics...');
@@ -58,5 +56,6 @@ module.exports = async (req, res) => {
     console.error('7. Power Automate error:', err.message);
   }
 
-  console.log('8. Done');
+  console.log('8. Done - sending 200 to Twilio');
+  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
 };
