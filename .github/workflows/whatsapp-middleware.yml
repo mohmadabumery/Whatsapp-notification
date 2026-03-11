@@ -1,0 +1,26 @@
+name: WhatsApp Middleware
+
+on:
+  repository_dispatch:
+    types: [whatsapp_inbound]
+
+jobs:
+  forward-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Forward to Dynamics CS
+        run: |
+          curl -X POST "${{ secrets.DYNAMICS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "${{ github.event.client_payload.body }}"
+
+      - name: Notify Power Automate
+        run: |
+          curl -X POST "${{ secrets.POWER_AUTOMATE_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "From": "${{ github.event.client_payload.From }}",
+              "Body": "${{ github.event.client_payload.Body }}",
+              "ProfileName": "${{ github.event.client_payload.ProfileName }}",
+              "MessageSid": "${{ github.event.client_payload.MessageSid }}"
+            }'
