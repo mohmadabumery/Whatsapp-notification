@@ -2,7 +2,6 @@ const querystring = require('querystring');
 
 module.exports = async (req, res) => {
   console.log('1. Request received:', req.method);
-  console.log('2. Body:', JSON.stringify(req.body));
 
   if (req.method !== 'POST') {
     return res.status(200).send('OK');
@@ -11,17 +10,25 @@ module.exports = async (req, res) => {
   const body = req.body;
 
   if (!body || !body.From || !body.Body) {
-    console.log('3. Body missing From or Body field - stopping');
     return res.status(200).send('OK');
   }
 
+  // Respond to Twilio immediately
+  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+
+  // Forward to Dynamics WITH original Twilio headers
   console.log('4. Forwarding to Dynamics...');
   try {
     const dynamicsRes = await fetch(
       'https://m-6be3abd6-b0bf-f011-89f5-000d3ad8817c.eu.omnichannelengagementhub.com/whatsapp-twilio/incoming?orgId=6be3abd6-b0bf-f011-89f5-000d3ad8817c',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Twilio-Signature': req.headers['x-twilio-signature'] || '',
+          'I-Twilio-Idempotency-Token': req.headers['i-twilio-idempotency-token'] || '',
+          'User-Agent': req.headers['user-agent'] || 'TwilioProxy/1.1'
+        },
         body: querystring.stringify(body)
       }
     );
@@ -30,6 +37,7 @@ module.exports = async (req, res) => {
     console.error('5. Dynamics error:', err.message);
   }
 
+  // Notify Power Automate
   console.log('6. Calling Power Automate...');
   try {
     const paRes = await fetch(
@@ -50,6 +58,5 @@ module.exports = async (req, res) => {
     console.error('7. Power Automate error:', err.message);
   }
 
-  console.log('8. Done - sending 200 to Twilio');
-  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  console.log('8. Done');
 };
