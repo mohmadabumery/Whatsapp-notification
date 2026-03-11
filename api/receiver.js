@@ -1,4 +1,17 @@
 const querystring = require('querystring');
+const crypto = require('crypto');
+
+function generateTwilioSignature(authToken, url, params) {
+  const sortedKeys = Object.keys(params).sort();
+  let signingString = url;
+  sortedKeys.forEach(key => {
+    signingString += key + params[key];
+  });
+  return crypto
+    .createHmac('sha1', authToken)
+    .update(Buffer.from(signingString, 'utf-8'))
+    .digest('base64');
+}
 
 module.exports = async (req, res) => {
   console.log('1. Request received:', req.method);
@@ -14,18 +27,25 @@ module.exports = async (req, res) => {
     return res.status(200).send('OK');
   }
 
-  // Forward to Dynamics WITH original Twilio headers
+  // Re-sign request for Dynamics
+  const dynamicsUrl = 'https://m-6be3abd6-b0bf-f011-89f5-000d3ad8817c.eu.omnichannelengagementhub.com/whatsapp-twilio/incoming?orgId=6be3abd6-b0bf-f011-89f5-000d3ad8817c';
+  const signature = generateTwilioSignature(
+    process.env.TWILIO_AUTH_TOKEN,
+    dynamicsUrl,
+    body
+  );
+
+  // Forward to Dynamics
   console.log('4. Forwarding to Dynamics...');
   try {
     const dynamicsRes = await fetch(
-      'https://m-6be3abd6-b0bf-f011-89f5-000d3ad8817c.eu.omnichannelengagementhub.com/whatsapp-twilio/incoming?orgId=6be3abd6-b0bf-f011-89f5-000d3ad8817c',
+      dynamicsUrl,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'X-Twilio-Signature': req.headers['x-twilio-signature'] || '',
-          'I-Twilio-Idempotency-Token': req.headers['i-twilio-idempotency-token'] || '',
-          'User-Agent': req.headers['user-agent'] || 'TwilioProxy/1.1'
+          'X-Twilio-Signature': signature,
+          'User-Agent': 'TwilioProxy/1.1'
         },
         body: querystring.stringify(body)
       }
